@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pirate's Bounty</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Pirata+One&family=Cinzel:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Cinzel', serif;
+    overflow: hidden;
+  }
+
+  #gameWrapper {
+    position: relative;
+    border: 4px solid #8b7355;
+    border-radius: 12px;
+    box-shadow: 0 0 60px rgba(139, 115, 85, 0.3), inset 0 0 20px rgba(0,0,0,0.5);
+    background: #1a1a2e;
+  }
+
+  canvas {
+    display: block;
+    border-radius: 8px;
+    background: #0d1b2a;
+  }
+
+  #ui {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 10;
+    border-radius: 8px 8px 0 0;
+  }
+
+  #ui span {
+    color: #f0d9a0;
+    font-size: 18px;
+    font-weight: 700;
+    text-shadow: 0 0 10px rgba(240, 217, 160, 0.3);
+    letter-spacing: 1px;
+  }
+
+  #ui .highlight {
+    color: #ffd700;
+  }
+
+  #overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0,0,0,0.75);
+    z-index: 20;
+    border-radius: 8px;
+    backdrop-filter: blur(4px);
+  }
+
+  #overlay h1 {
+    font-family: 'Pirata One', cursive;
+    font-size: 72px;
+    color: #ffd700;
+    text-shadow: 0 0 30px rgba(255, 215, 0, 0.5), 0 4px 8px rgba(0,0,0,0.8);
+    letter-spacing: 6px;
+    margin-bottom: 8px;
+  }
+
+  #overlay h2 {
+    font-family: 'Pirata One', cursive;
+    font-size: 48px;
+    color: #ffd700;
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+    margin-bottom: 10px;
+  }
+
+  #overlay .subtitle {
+    color: #c4a882;
+    font-size: 16px;
+    margin-bottom: 30px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+
+  #overlay .final-score {
+    color: #f0d9a0;
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+
+  #overlay button {
+    font-family: 'Pirata One', cursive;
+    font-size: 28px;
+    padding: 12px 50px;
+    border: 2px solid #ffd700;
+    background: linear-gradient(135deg, #8b6914, #d4a017);
+    color: #1a0a00;
+    cursor: pointer;
+    border-radius: 8px;
+    letter-spacing: 2px;
+    transition: all 0.2s;
+    pointer-events: all;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
+  }
+
+  #overlay button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 40px rgba(255, 215, 0, 0.4);
+    background: linear-gradient(135deg, #d4a017, #ffd700);
+  }
+
+  #controls-hint {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(240, 217, 160, 0.4);
+    font-size: 12px;
+    letter-spacing: 2px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .gold { color: #ffd700; }
+</style>
+</head>
+<body>
+
+<div id="gameWrapper">
+  <canvas id="gameCanvas" width="900" height="600"></canvas>
+
+  <div id="ui">
+    <span>☠ <span class="highlight" id="scoreDisplay">0</span> doubloons</span>
+    <span id="livesDisplay">❤️ ❤️ ❤️</span>
+    <span>Wave <span class="highlight" id="waveDisplay">1</span></span>
+  </div>
+
+  <div id="overlay">
+    <h1>Pirate's Bounty</h1>
+    <div class="subtitle">⚓ Sail the treacherous seas ⚓</div>
+    <button id="startBtn">Set Sail!</button>
+    <div id="controls-hint">WASD / Arrow Keys to sail &bull; Click or Space to fire cannons</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = 900, H = 600;
+
+const scoreSpan = document.getElementById('scoreDisplay');
+const livesSpan = document.getElementById('livesDisplay');
+const waveSpan = document.getElementById('waveDisplay');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+
+let game = null;
+let keys = {};
+let animId = null;
+
+function rand(min, max) { return Math.random() * (max - min) + min; }
+function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function normalizeAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+function angleDiff(from, to) {
+  return normalizeAngle(to - from);
+}
+
+function resolveIslandCollision(entity, islands) {
+  for (const isl of islands) {
+    const d = dist(entity, isl);
+    const minD = isl.radius + entity.radius;
+    if (d < minD && d > 0.001) {
+      const overlap = minD - d;
+      const nx = (entity.x - isl.x) / d;
+      const ny = (entity.y - isl.y) / d;
+      entity.x += nx * overlap;
+      entity.y += ny * overlap;
+    }
+  }
+}
+
+class Particle {
+  constructor(x, y, vx, vy, life, color, size) {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.life = life; this.maxLife = life;
+    this.color = color; this.size = size;
+  }
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.life -= dt;
+  }
+  get alpha() { return clamp(this.life / this.maxLife, 0, 1); }
+  get alive() { return this.life > 0; }
+}
+
+class Cannonball {
+  constructor(x, y, angle, speed, isEnemy = false) {
+    this.x = x; this.y = y;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.radius = isEnemy ? 6 : 5;
+    this.isEnemy = isEnemy;
+    this.alive = true;
+    this.trail = [];
+  }
+  update(dt) {
+    this.trail.push({ x: this.x, y: this.y });
+    if (this.trail.length > 8) this.trail.shift();
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    if (this.x < -20 || this.x > W + 20 || this.y < -20 || this.y > H + 20) {
+      this.alive = false;
+    }
+  }
+  draw(ctx) {
+    for (let i = 0; i < this.trail.length; i++) {
+      const a = i / this.trail.length * 0.5;
+      ctx.beginPath();
+      ctx.arc(this.trail[i].x, this.trail[i].y, this.radius * (i / this.trail.length), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 200, 50, ${a})`;
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#333';
+    ctx.fill();
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if (!this.isEnemy) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff0';
+      ctx.fill();
+    }
+  }
+}
+
+class Island {
+  constructor(x, y, radius, hasTreasure = true) {
+    this.x = x; this.y = y;
+    this.radius = radius;
+    this.hasTreasure = hasTreasure;
+    this.treasureCollected = false;
+    this.palmTrees = [];
+    this.goldGlow = 0;
+    const treeCount = randInt(1, 3);
+    for (let i = 0; i < treeCount; i++) {
+      const a = rand(0, Math.PI * 2);
+      const r = rand(0, radius * 0.6);
+      this.palmTrees.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, h: rand(30, 50) });
+    }
+  }
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+    grad.addColorStop(0, '#e8d5a0');
+    grad.addColorStop(0.6, '#c4a050');
+    grad.addColorStop(1, '#8b7340');
+    ctx.beginPath();
+    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(0, -this.radius * 0.1, this.radius * 0.9, this.radius * 0.3, 0, Math.PI, 0);
+    ctx.fillStyle = '#b8954a';
+    ctx.fill();
+
+    for (const tree of this.palmTrees) {
+      ctx.strokeStyle = '#5a3a1a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(tree.x, tree.y);
+      ctx.lineTo(tree.x, tree.y - tree.h);
+      ctx.stroke();
+
+      ctx.fillStyle = '#2d7a2d';
+      ctx.beginPath();
+      ctx.ellipse(tree.x - 5, tree.y - tree.h - 5, 12, 18, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(tree.x + 5, tree.y - tree.h - 3, 10, 16, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (this.hasTreasure && !this.treasureCollected) {
+      this.goldGlow += 0.03;
+      const pulse = Math.sin(this.goldGlow) * 0.3 + 0.7;
+      ctx.beginPath();
+      ctx.arc(0, 0, 8 * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 215, 0, ${0.3 * pulse})`;
+      ctx.fill();
+
+      ctx.font = '20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(255, 215, 0, ${pulse})`;
+      ctx.fillText('★', 0, 0);
+    }
+
+    ctx.restore();
+  }
+}
+
+class EnemyShip {
+  constructor(x, y, wave) {
+    this.x = x; this.y = y;
+    this.speed = rand(30, 45 + wave * 4);
+    this.angle = rand(0, Math.PI * 2);
+    this.radius = 18;
+    this.hp = 1 + Math.floor(wave / 2);
+    this.maxHp = this.hp;
+    this.alive = true;
+    this.shootCooldown = rand(1.5, 3);
+    this.shootTimer = rand(0, 1);
+    this.turnSpeed = rand(1, 2);
+    this.wobble = rand(0, Math.PI * 2);
+  }
+  update(dt, player) {
+    this.wobble += dt * 0.5;
+
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const d = Math.hypot(dx, dy);
+
+    let targetAngle, speedMul;
+    if (d < 350) {
+      targetAngle = Math.atan2(dy, dx) + Math.PI;
+      speedMul = 1;
+      if (d < 250) {
+        this.shootTimer -= dt;
+        if (this.shootTimer <= 0) {
+          this.shootTimer = this.shootCooldown;
+          return true;
+        }
+      }
+    } else {
+      targetAngle = Math.atan2(dy, dx);
+      speedMul = 0.5;
+    }
+
+    const diff = angleDiff(this.angle, targetAngle);
+    this.angle += Math.sign(diff) * Math.min(Math.abs(diff), this.turnSpeed * dt * speedMul);
+    this.x += Math.cos(this.angle) * this.speed * speedMul * dt;
+    this.y += Math.sin(this.angle) * this.speed * speedMul * dt;
+
+    this.x = clamp(this.x, 30, W - 30);
+    this.y = clamp(this.y, 30, H - 30);
+    return false;
+  }
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle + Math.PI / 2);
+
+    const bob = Math.sin(this.wobble * 2) * 1.5;
+
+    ctx.translate(0, bob);
+
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 4;
+
+    const hCol = '#3a1a1a';
+    const dCol = '#1a0a0a';
+    const sailCol = '#4a2020';
+    const sailLight = '#6a3030';
+
+    ctx.beginPath();
+    ctx.moveTo(-12, 16);
+    ctx.lineTo(-16, -2);
+    ctx.quadraticCurveTo(-14, -12, -10, -18);
+    ctx.lineTo(-4, -20);
+    ctx.lineTo(4, -20);
+    ctx.lineTo(10, -18);
+    ctx.quadraticCurveTo(14, -12, 16, -2);
+    ctx.lineTo(12, 16);
+    ctx.quadraticCurveTo(6, 19, 0, 18);
+    ctx.quadraticCurveTo(-6, 19, -12, 16);
+    ctx.closePath();
+    ctx.fillStyle = hCol;
+    ctx.fill();
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = dCol;
+    ctx.fillRect(-15, -3, 30, 3);
+
+    ctx.fillStyle = '#2a1515';
+    ctx.fillRect(-10, 8, 20, 6);
+    ctx.fillStyle = '#1a0a0a';
+    ctx.fillRect(-10, 8, 20, 1.5);
+
+    ctx.shadowBlur = 0;
+
+    const mx = -5, my = -10;
+    ctx.strokeStyle = sailCol;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(mx, my);
+    ctx.lineTo(mx, my - 22);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(mx, my - 22);
+    ctx.lineTo(mx + 18, my - 14);
+    ctx.lineTo(mx + 14, my - 3);
+    ctx.closePath();
+    ctx.fillStyle = sailCol;
+    ctx.fill();
+    ctx.strokeStyle = sailLight;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(mx, my - 22);
+    ctx.lineTo(mx + 14, my - 12);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#1a0a0a';
+    ctx.beginPath();
+    ctx.moveTo(mx, my - 24);
+    ctx.lineTo(mx - 3, my - 28);
+    ctx.lineTo(mx + 3, my - 28);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#ff4444';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('☠', mx, my - 28);
+
+    ctx.restore();
+
+    if (this.hp < this.maxHp) {
+      ctx.fillStyle = '#333';
+      ctx.fillRect(this.x - 15, this.y - 28, 30, 4);
+      ctx.fillStyle = '#ff4444';
+      ctx.fillRect(this.x - 15, this.y - 28, 30 * (this.hp / this.maxHp), 4);
+    }
+  }
+}
+
+class PlayerShip {
+  constructor() {
+    this.x = W / 2;
+    this.y = H / 2;
+    this.angle = -Math.PI / 2;
+    this.speed = 0;
+    this.maxSpeed = 90;
+    this.acceleration = 100;
+    this.brakeFriction = 60;
+    this.radius = 16;
+    this.shootCooldown = 0.4;
+    this.shootTimer = 0;
+    this.wobble = 0;
+    this.invincibleTimer = 0;
+  }
+  update(dt) {
+    this.wobble += dt * 3;
+
+    if (keys['a'] || keys['arrowleft']) {
+      this.angle -= 2.5 * dt;
+    }
+    if (keys['d'] || keys['arrowright']) {
+      this.angle += 2.5 * dt;
+    }
+
+    if (keys['w'] || keys['arrowup']) {
+      this.speed = Math.min(this.speed + this.acceleration * dt, this.maxSpeed);
+    } else if (keys['s'] || keys['arrowdown']) {
+      this.speed = Math.max(this.speed - this.acceleration * dt, -this.maxSpeed * 0.4);
+    } else if (Math.abs(this.speed) >= 2) {
+      this.speed -= Math.sign(this.speed) * this.brakeFriction * dt;
+      if (Math.abs(this.speed) < 2) this.speed = 0;
+    }
+
+    this.x += Math.cos(this.angle) * this.speed * dt;
+    this.y += Math.sin(this.angle) * this.speed * dt;
+    this.x = clamp(this.x, 20, W - 20);
+    this.y = clamp(this.y, 20, H - 20);
+
+    if (this.shootTimer > 0) this.shootTimer -= dt;
+    if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
+  }
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle + Math.PI / 2);
+
+    const bob = Math.sin(this.wobble) * 1.5;
+
+    if (this.invincibleTimer > 0 && Math.floor(this.invincibleTimer * 10) % 2 === 0) {
+      ctx.globalAlpha = 0.5;
+    }
+
+    ctx.translate(0, bob);
+
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 4;
+
+    const hullColor = '#5a2a1a';
+    const deckColor = '#7a4a2a';
+    const trimColor = '#c4943a';
+    const sailColor = '#f0ead0';
+    const darkSail = '#d8d0b0';
+
+    ctx.beginPath();
+    ctx.moveTo(-10, 18);
+    ctx.lineTo(-16, -2);
+    ctx.quadraticCurveTo(-14, -12, -10, -18);
+    ctx.lineTo(-4, -22);
+    ctx.lineTo(4, -22);
+    ctx.lineTo(10, -18);
+    ctx.quadraticCurveTo(14, -12, 16, -2);
+    ctx.lineTo(10, 18);
+    ctx.quadraticCurveTo(5, 22, 0, 20);
+    ctx.quadraticCurveTo(-5, 22, -10, 18);
+    ctx.closePath();
+    ctx.fillStyle = hullColor;
+    ctx.fill();
+    ctx.strokeStyle = '#3a1a0a';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = deckColor;
+    ctx.fillRect(-15, -3, 30, 4);
+
+    ctx.fillStyle = '#8b5a3a';
+    ctx.fillRect(-10, 8, 20, 7);
+    ctx.fillStyle = '#4a2a1a';
+    ctx.fillRect(-10, 8, 20, 1.5);
+
+    ctx.fillStyle = '#4a2a1a';
+    ctx.fillRect(-9, 9, 4, 5);
+    ctx.fillRect(5, 9, 4, 5);
+
+    ctx.shadowBlur = 0;
+
+    for (let x of [-6, 6]) {
+      for (let y of [2, 8, 14]) {
+        ctx.fillStyle = '#8b6914';
+        ctx.fillRect(x - 1, y, 2, 2);
+      }
+    }
+
+    ctx.fillStyle = trimColor;
+    ctx.strokeStyle = trimColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, -5, 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.arc(0, -5, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    const mastX = -4, mastY = -3;
+
+    ctx.strokeStyle = '#5a3a1a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(mastX, mastY);
+    ctx.lineTo(mastX, mastY - 30);
+    ctx.stroke();
+
+    ctx.fillStyle = sailColor;
+    ctx.beginPath();
+    ctx.moveTo(mastX, mastY - 28);
+    ctx.lineTo(mastX + 20, mastY - 18);
+    ctx.lineTo(mastX + 17, mastY - 4);
+    ctx.lineTo(mastX, mastY - 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = darkSail;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(mastX, mastY - 22);
+    ctx.lineTo(mastX + 14, mastY - 14);
+    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+
+    const mast2X = 6;
+
+    ctx.strokeStyle = '#5a3a1a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(mast2X, mastY);
+    ctx.lineTo(mast2X, mastY - 22);
+    ctx.stroke();
+
+    ctx.fillStyle = sailColor;
+    ctx.beginPath();
+    ctx.moveTo(mast2X, mastY - 20);
+    ctx.lineTo(mast2X + 15, mastY - 12);
+    ctx.lineTo(mast2X + 12, mastY - 2);
+    ctx.lineTo(mast2X, mastY - 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = darkSail;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    ctx.fillStyle = '#1a0a0a';
+    ctx.beginPath();
+    ctx.moveTo(mastX, mastY - 32);
+    ctx.lineTo(mastX - 4, mastY - 37);
+    ctx.lineTo(mastX + 4, mastY - 37);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚓', mastX, mastY - 37);
+
+    ctx.strokeStyle = '#5a3a1a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-8, -20);
+    ctx.lineTo(-22, -24);
+    ctx.stroke();
+
+    ctx.fillStyle = sailColor;
+    ctx.beginPath();
+    ctx.moveTo(-10, -18);
+    ctx.lineTo(-20, -22);
+    ctx.lineTo(-16, -12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = darkSail;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+}
+
+class Game {
+  constructor() {
+    this.reset();
+    this.generateIslands();
+    this.spawnWave();
+  }
+
+  reset() {
+    this.player = new PlayerShip();
+    this.enemies = [];
+    this.islands = [];
+    this.cannonballs = [];
+    this.particles = [];
+    this.score = 0;
+    this.lives = 3;
+    this.wave = 1;
+    this.gameOver = false;
+    this.waveTimer = 0;
+    this.spawnTimer = 0;
+    this.enemiesPerWave = 2;
+    this.spawnedCount = 0;
+    this.comboCount = 0;
+    this.comboTimer = 0;
+    this.state = 'playing';
+    this.mouseX = W / 2;
+    this.mouseY = H / 2;
+  }
+
+  generateIslands() {
+    for (let i = 0; i < 6; i++) {
+      let x, y, ok;
+      let attempts = 0;
+      do {
+        x = rand(80, W - 80);
+        y = rand(80, H - 80);
+        ok = dist({ x, y }, { x: W / 2, y: H / 2 }) > 120;
+        for (const isl of this.islands) {
+          if (dist({ x, y }, isl) < isl.radius + 60) ok = false;
+        }
+        attempts++;
+      } while (!ok && attempts < 50);
+      this.islands.push(new Island(x, y, rand(25, 40), true));
+    }
+  }
+
+  spawnWave() {
+    this.spawnedCount = 0;
+    this.enemiesPerWave = Math.min(2 + this.wave - 1, 8);
+    this.spawnTimer = 0;
+  }
+
+  getNextSpawnDelay() {
+    return Math.max(0.8, 2.5 - this.wave * 0.2);
+  }
+
+  addParticles(x, y, count, color, speed, life, size) {
+    for (let i = 0; i < count; i++) {
+      const a = rand(0, Math.PI * 2);
+      const s = rand(speed * 0.2, speed);
+      this.particles.push(new Particle(
+        x + rand(-3, 3), y + rand(-3, 3),
+        Math.cos(a) * s, Math.sin(a) * s,
+        rand(life * 0.5, life), color, rand(size * 0.5, size)
+      ));
+    }
+  }
+
+  fireCannons(targetX, targetY) {
+    if (this.player.shootTimer > 0) return;
+    this.player.shootTimer = this.player.shootCooldown;
+    const targetAngle = Math.atan2(targetY - this.player.y, targetX - this.player.x);
+    const offsets = [-0.15, 0, 0.15];
+    for (const off of offsets) {
+      const a = targetAngle + off;
+      this.cannonballs.push(new Cannonball(
+        this.player.x + Math.cos(a) * 22,
+        this.player.y + Math.sin(a) * 22,
+        a, 350
+      ));
+    }
+    this.addParticles(
+      this.player.x + Math.cos(targetAngle) * 20,
+      this.player.y + Math.sin(targetAngle) * 20,
+      5, 50, 0.3, '#ff8'
+    );
+  }
+
+  enemyFire(enemy) {
+    const a = Math.atan2(
+      this.player.y - enemy.y,
+      this.player.x - enemy.x
+    );
+    this.cannonballs.push(new Cannonball(enemy.x, enemy.y, a, 220, true));
+  }
+
+  playerHit() {
+    if (this.player.invincibleTimer > 0) return;
+    this.lives--;
+    this.player.invincibleTimer = 2;
+    this.addParticles(this.player.x, this.player.y, 20, 100, 0.5, '#ff4444');
+    this.updateUI();
+    if (this.lives <= 0) {
+      this.endGame();
+    }
+  }
+
+  endGame() {
+    this.gameOver = true;
+    this.state = 'gameover';
+    overlay.innerHTML = `
+      <h2>☠ Shipwrecked ☠</h2>
+      <div class="final-score">Ye plundered <span class="gold">${this.score}</span> doubloons</div>
+      <div class="subtitle">Wave ${this.wave} &bull; ${this.lives <= 0 ? 'Lost at sea' : 'Abandoned ship'}</div>
+      <button id="restartBtn">Sail Again</button>
+    `;
+    overlay.style.display = 'flex';
+    document.getElementById('restartBtn').addEventListener('click', () => this.restart());
+  }
+
+  restart() {
+    overlay.style.display = 'none';
+    this.reset();
+    this.generateIslands();
+    this.spawnWave();
+    this.updateUI();
+  }
+
+  updateUI() {
+    scoreSpan.textContent = this.score;
+    waveSpan.textContent = this.wave;
+    let hearts = '';
+    for (let i = 0; i < this.lives; i++) hearts += '❤️ ';
+    livesSpan.textContent = hearts || '💀';
+  }
+
+  update(dt) {
+    if (this.state !== 'playing') return;
+
+    this.player.update(dt);
+    resolveIslandCollision(this.player, this.islands);
+
+    this.updateCannonballs(dt);
+    this.updateEnemies(dt);
+    this.updateParticles(dt);
+    this.collectTreasure();
+    this.advanceWave(dt);
+    this.spawnEnemies(dt);
+    this.updateCombo(dt);
+  }
+
+  updateCannonballs(dt) {
+    for (let i = this.cannonballs.length - 1; i >= 0; i--) {
+      const b = this.cannonballs[i];
+      b.update(dt);
+      if (!b.alive) { this.cannonballs.splice(i, 1); continue; }
+
+      if (!b.isEnemy) {
+        for (let j = this.enemies.length - 1; j >= 0; j--) {
+          const e = this.enemies[j];
+          if (!e.alive) continue;
+          if (dist(b, e) < e.radius + b.radius) {
+            e.hp--;
+            b.alive = false;
+            this.addParticles(b.x, b.y, 8, 80, 0.3, '#ff6644');
+            if (e.hp <= 0) {
+              e.alive = false;
+              this.addParticles(e.x, e.y, 30, 120, 0.6, '#ff4444');
+              this.addParticles(e.x, e.y, 10, 60, 0.4, '#ffd700');
+              this.score += 10 + this.wave * 2;
+              this.comboCount++;
+              this.comboTimer = 2;
+              this.updateUI();
+            }
+            break;
+          }
+        }
+      } else {
+        if (dist(b, this.player) < this.player.radius + b.radius) {
+          b.alive = false;
+          this.playerHit();
+          this.updateUI();
+        }
+      }
+    }
+  }
+
+  updateEnemies(dt) {
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (!e.alive) { this.enemies.splice(i, 1); continue; }
+      if (e.update(dt, this.player)) {
+        this.enemyFire(e);
+      }
+      resolveIslandCollision(e, this.islands);
+      if (dist(e, this.player) < e.radius + this.player.radius) {
+        this.playerHit();
+        this.updateUI();
+      }
+    }
+  }
+
+  updateParticles(dt) {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      this.particles[i].update(dt);
+      if (!this.particles[i].alive) this.particles.splice(i, 1);
+    }
+  }
+
+  collectTreasure() {
+    for (const isl of this.islands) {
+      if (isl.hasTreasure && !isl.treasureCollected) {
+        if (dist(this.player, isl) < isl.radius + 15) {
+          isl.treasureCollected = true;
+          this.score += 25;
+          this.addParticles(isl.x, isl.y, 20, 80, 0.5, '#ffd700');
+          this.updateUI();
+        }
+      }
+    }
+  }
+
+  advanceWave(dt) {
+    this.waveTimer += dt;
+    if (this.enemies.length === 0 && this.spawnedCount >= this.enemiesPerWave) {
+      this.wave++;
+      this.waveTimer = 0;
+      this.updateUI();
+      this.spawnWave();
+    }
+  }
+
+  spawnEnemies(dt) {
+    if (this.spawnedCount >= this.enemiesPerWave) return;
+    this.spawnTimer -= dt;
+    if (this.spawnTimer > 0) return;
+    this.spawnTimer = this.getNextSpawnDelay();
+    let x, y, ok;
+    let attempts = 0;
+    do {
+      if (Math.random() < 0.5) {
+        x = Math.random() < 0.5 ? -30 : W + 30;
+        y = rand(30, H - 30);
+      } else {
+        x = rand(30, W - 30);
+        y = Math.random() < 0.5 ? -30 : H + 30;
+      }
+      ok = dist({ x, y }, this.player) > 200;
+      attempts++;
+    } while (!ok && attempts < 20);
+    this.enemies.push(new EnemyShip(x, y, this.wave));
+    this.spawnedCount++;
+  }
+
+  updateCombo(dt) {
+    if (this.comboTimer <= 0) return;
+    this.comboTimer -= dt;
+    if (this.comboTimer <= 0) this.comboCount = 0;
+  }
+
+  draw() {
+    ctx.clearRect(0, 0, W, H);
+    this.drawBackground();
+
+    for (const isl of this.islands) isl.draw(ctx);
+    for (const b of this.cannonballs) b.draw(ctx);
+
+    for (const e of this.enemies) {
+      if (e.alive) e.draw(ctx);
+    }
+    this.player.draw(ctx);
+
+    for (const p of this.particles) {
+      ctx.globalAlpha = p.alpha;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    if (this.comboCount > 1 && this.comboTimer > 0) {
+      ctx.fillStyle = `rgba(255, 215, 0, ${Math.min(1, this.comboTimer)})`;
+      ctx.font = 'bold 24px Cinzel, serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${this.comboCount}x Combo!`, W / 2, 50);
+    }
+
+    this.drawCrosshair();
+  }
+
+  drawBackground() {
+    const grad = ctx.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, 500);
+    grad.addColorStop(0, '#0d2840');
+    grad.addColorStop(0.5, '#0a1a30');
+    grad.addColorStop(1, '#050d18');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    for (let y = 0; y < H; y += 30) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y + Math.sin(Date.now() / 2000 + y / 30) * 3);
+      ctx.lineTo(W, y + Math.sin(Date.now() / 2000 + y / 30 + 2) * 3);
+      ctx.stroke();
+    }
+  }
+
+  drawCrosshair() {
+    ctx.save();
+    ctx.translate(this.mouseX, this.mouseY);
+    ctx.strokeStyle = 'rgba(255, 200, 100, 0.7)';
+    ctx.lineWidth = 1.5;
+    const cr = 10;
+    ctx.beginPath();
+    ctx.arc(0, 0, cr, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-cr - 4, 0); ctx.lineTo(cr + 4, 0);
+    ctx.moveTo(0, -cr - 4); ctx.lineTo(0, cr + 4);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 200, 100, 0.5)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function gameLoop(timestamp) {
+  const dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+  lastTime = timestamp;
+
+  if (game) {
+    game.update(dt);
+    game.draw();
+  }
+  animId = requestAnimationFrame(gameLoop);
+}
+
+let lastTime = 0;
+
+startBtn.addEventListener('click', () => {
+  overlay.style.display = 'none';
+  game = new Game();
+  game.updateUI();
+  if (!animId) {
+    lastTime = performance.now();
+    animId = requestAnimationFrame(gameLoop);
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === ' ') e.preventDefault();
+  if (e.key === ' ') {
+    if (game && game.state === 'playing') game.fireCannons(game.mouseX, game.mouseY);
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  if (game) {
+    game.mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    game.mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+  }
+});
+
+canvas.addEventListener('click', (e) => {
+  if (game && game.state === 'playing') {
+    game.fireCannons(game.mouseX, game.mouseY);
+  }
+});
+
+lastTime = performance.now();
+animId = requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
