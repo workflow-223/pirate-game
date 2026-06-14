@@ -14,6 +14,8 @@ HTML5 Canvas arcade game where players pilot a pirate ship through treacherous s
 Deployed to GitHub Pages at:
 `https://workflow-223.github.io/pirate-game/`
 
+**Setup:** In repo Settings → Pages → Source: **Deploy from a branch**, branch: `main`, folder: `/ (root)`.
+
 ## Local Development
 
 Simply open `index.html` in a browser - no build step required.
