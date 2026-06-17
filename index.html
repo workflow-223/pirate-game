@@ -31,6 +31,9 @@
     display: block;
     border-radius: 8px;
     background: #0d1b2a;
+    max-width: 100%;
+    height: auto;
+    touch-action: none;
   }
 
   #ui {
@@ -99,6 +102,8 @@
     margin-bottom: 30px;
     letter-spacing: 4px;
     text-transform: uppercase;
+    text-align: center;
+    padding: 0 16px;
   }
 
   #overlay .final-score {
@@ -141,6 +146,115 @@
   }
 
   .gold { color: #ffd700; }
+
+  @media (max-width: 700px) {
+    #gameWrapper { border-width: 2px; border-radius: 8px; }
+    #overlay h1 { font-size: 36px; letter-spacing: 3px; }
+    #overlay h2 { font-size: 28px; }
+    #overlay .subtitle { font-size: 12px; margin-bottom: 20px; letter-spacing: 2px; }
+    #overlay .final-score { font-size: 18px; }
+    #overlay button { font-size: 20px; padding: 10px 30px; }
+    #ui { padding: 6px 12px; }
+    #ui span { font-size: 13px; }
+    #controls-hint { font-size: 9px; bottom: 8px; }
+  }
+
+  @media (max-width: 480px) {
+    #overlay h1 { font-size: 26px; letter-spacing: 2px; }
+    #overlay h2 { font-size: 20px; }
+    #overlay .subtitle { font-size: 10px; margin-bottom: 14px; }
+    #overlay button { font-size: 16px; padding: 8px 20px; }
+    #ui { padding: 4px 8px; }
+    #ui span { font-size: 11px; }
+    #controls-hint { font-size: 8px; bottom: 4px; }
+  }
+
+  #gameWrapper {
+    max-width: 100vw;
+  }
+
+  .touch-controls {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    z-index: 30;
+    pointer-events: none;
+  }
+
+  .touch-dpad {
+    display: grid;
+    grid-template-columns: 48px 48px 48px;
+    grid-template-rows: 48px 48px 48px;
+    gap: 3px;
+    pointer-events: all;
+  }
+
+  .touch-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    border: 2px solid rgba(255,215,0,0.4);
+    background: rgba(0,0,0,0.5);
+    color: #ffd700;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    cursor: pointer;
+  }
+
+  .touch-btn:active,
+  .touch-btn.active {
+    background: rgba(255,215,0,0.2);
+  }
+
+  .touch-empty {
+    pointer-events: none;
+  }
+
+  .touch-fire {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 3px solid rgba(255,68,68,0.6);
+    background: rgba(255,0,0,0.2);
+    color: #ff4444;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: all;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+
+  .touch-fire:active,
+  .touch-fire.active {
+    background: rgba(255,0,0,0.4);
+  }
+
+  @media (max-width: 700px) {
+    .touch-btn { width: 40px; height: 40px; font-size: 16px; }
+    .touch-dpad { grid-template-columns: 40px 40px 40px; grid-template-rows: 40px 40px 40px; gap: 2px; }
+    .touch-fire { width: 56px; height: 56px; font-size: 10px; }
+  }
+
+  @media (max-width: 480px) {
+    .touch-btn { width: 36px; height: 36px; font-size: 14px; border-width: 1.5px; }
+    .touch-dpad { grid-template-columns: 36px 36px 36px; grid-template-rows: 36px 36px 36px; gap: 2px; }
+    .touch-fire { width: 48px; height: 48px; font-size: 9px; border-width: 2px; }
+  }
 </style>
 </head>
 <body>
@@ -158,7 +272,22 @@
     <h1>Pirate's Bounty</h1>
     <div class="subtitle">⚓ Sail the treacherous seas ⚓</div>
     <button id="startBtn">Set Sail!</button>
-    <div id="controls-hint">WASD / Arrow Keys to sail &bull; Click or Space to fire cannons</div>
+    <div id="controls-hint">WASD / Arrow Keys to sail &bull; Click or tap to fire cannons</div>
+  </div>
+
+  <div class="touch-controls" id="touchControls" style="display:none;">
+    <div class="touch-dpad">
+      <div class="touch-empty"></div>
+      <div class="touch-btn" data-dir="up">▲</div>
+      <div class="touch-empty"></div>
+      <div class="touch-btn" data-dir="left">◀</div>
+      <div class="touch-empty"></div>
+      <div class="touch-btn" data-dir="right">▶</div>
+      <div class="touch-empty"></div>
+      <div class="touch-btn" data-dir="down">▼</div>
+      <div class="touch-empty"></div>
+    </div>
+    <div class="touch-fire" id="touchFire">FIRE</div>
   </div>
 </div>
 
@@ -1051,6 +1180,75 @@ canvas.addEventListener('click', (e) => {
     game.fireCannons(game.mouseX, game.mouseY);
   }
 });
+
+// Detect if touch device
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+if (isTouchDevice) {
+  document.getElementById('touchControls').style.display = 'flex';
+  document.getElementById('controls-hint').textContent = 'Tap or drag to aim \u2022 Fire button to shoot';
+}
+
+function checkTouchControls() {
+  const tc = document.getElementById('touchControls');
+  if (window.innerWidth <= 700 || isTouchDevice) {
+    tc.style.display = 'flex';
+  } else {
+    tc.style.display = 'none';
+  }
+}
+window.addEventListener('resize', checkTouchControls);
+checkTouchControls();
+
+const touchKeyMap = { up: 'w', down: 's', left: 'a', right: 'd' };
+
+document.querySelectorAll('.touch-btn').forEach(btn => {
+  const dir = btn.dataset.dir;
+  function onStart(e) { e.preventDefault(); keys[touchKeyMap[dir]] = true; btn.classList.add('active'); }
+  function onEnd(e) { e.preventDefault(); keys[touchKeyMap[dir]] = false; btn.classList.remove('active'); }
+  btn.addEventListener('touchstart', onStart, { passive: false });
+  btn.addEventListener('touchend', onEnd, { passive: false });
+  btn.addEventListener('touchcancel', onEnd, { passive: false });
+  btn.addEventListener('mousedown', onStart);
+  btn.addEventListener('mouseup', onEnd);
+  btn.addEventListener('mouseleave', onEnd);
+});
+
+const touchFire = document.getElementById('touchFire');
+function onFire(e) { e.preventDefault(); touchFire.classList.add('active'); if (game && game.state === 'playing') game.fireCannons(game.mouseX, game.mouseY); }
+function onFireEnd(e) { e.preventDefault(); touchFire.classList.remove('active'); }
+touchFire.addEventListener('touchstart', onFire, { passive: false });
+touchFire.addEventListener('touchend', onFireEnd, { passive: false });
+touchFire.addEventListener('touchcancel', onFireEnd, { passive: false });
+touchFire.addEventListener('mousedown', onFire);
+touchFire.addEventListener('mouseup', onFireEnd);
+touchFire.addEventListener('mouseleave', onFireEnd);
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  if (game) {
+    game.mouseX = (touch.clientX - rect.left) * (canvas.width / rect.width);
+    game.mouseY = (touch.clientY - rect.top) * (canvas.height / rect.height);
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  if (game) {
+    game.mouseX = (touch.clientX - rect.left) * (canvas.width / rect.width);
+    game.mouseY = (touch.clientY - rect.top) * (canvas.height / rect.height);
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (game && game.state === 'playing') {
+    game.fireCannons(game.mouseX, game.mouseY);
+  }
+}, { passive: false });
 
 lastTime = performance.now();
 animId = requestAnimationFrame(gameLoop);
